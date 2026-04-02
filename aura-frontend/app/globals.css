@@ -1,0 +1,95 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-aura-bg text-aura-text antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    @apply bg-aura-accent/30 text-white;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-1.5;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-aura-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-aura-border-active;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-aura-border bg-aura-card p-5 transition-colors;
+  }
+
+  .card-hover:hover {
+    @apply border-aura-border-active;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-aura-accent px-4 py-2.5
+           text-sm font-medium text-white transition-all
+           hover:bg-aura-accent-light active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-aura-danger px-4 py-2.5
+           text-sm font-medium text-white transition-all
+           hover:bg-red-500 active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-aura-border
+           bg-transparent px-4 py-2.5 text-sm font-medium text-aura-text
+           transition-all hover:bg-aura-surface hover:border-aura-border-active
+           active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-low {
+    @apply badge bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25;
+  }
+
+  .badge-medium {
+    @apply badge bg-yellow-500/15 text-yellow-400 ring-1 ring-yellow-500/25;
+  }
+
+  .badge-high {
+    @apply badge bg-red-500/15 text-red-400 ring-1 ring-red-500/25;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-aura-border bg-aura-surface px-4 py-3
+           text-sm text-aura-text placeholder-aura-muted
+           transition-colors focus:border-aura-accent focus:outline-none focus:ring-1 focus:ring-aura-accent/50;
+  }
+
+  .table-header {
+    @apply text-left text-xs font-semibold uppercase tracking-wider text-aura-muted;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm text-aura-text;
+  }
+}
