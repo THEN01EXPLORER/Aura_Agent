@@ -25,6 +25,23 @@ class Settings(BaseSettings):
         default=["http://localhost:3000"],
         description="Allowed CORS origins for the API",
     )
+
+    @validator("cors_origins", pre=True)
+    def parse_cors_origins(cls, v: str | List[str]) -> List[str]:
+        """Handle both JSON arrays and comma-separated strings for CORS."""
+        if isinstance(v, str):
+            # Try parsing as JSON first (e.g. '["http://..."]')
+            try:
+                import json
+                decoded = json.loads(v)
+                if isinstance(decoded, list):
+                    return [str(item).strip() for item in decoded]
+            except (ValueError, TypeError):
+                pass
+            # Fallback to comma-separated (e.g. 'http://..., https://...')
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
+
     default_user_sub: str = Field(
         default="demo-user",
         description="Fallback user identity for demo purposes",

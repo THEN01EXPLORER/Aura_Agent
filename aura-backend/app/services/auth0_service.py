@@ -187,6 +187,3 @@ def request_scoped_token(user_sub: str, scope: str) -> dict:
             status_code=503,
             detail=f"Failed to communicate with Auth0 Token Vault: {exc}"
         )
-
-# Delete obsolete helper
-del _get_github_token_from_identities
