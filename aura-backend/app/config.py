@@ -9,7 +9,7 @@ from functools import lru_cache
 from typing import List
 
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -26,7 +26,8 @@ class Settings(BaseSettings):
         description="Allowed CORS origins for the API",
     )
 
-    @validator("cors_origins", pre=True)
+    @field_validator("cors_origins", mode="before")
+    @classmethod
     def parse_cors_origins(cls, v: str | List[str]) -> List[str]:
         """Handle both JSON arrays and comma-separated strings for CORS."""
         if isinstance(v, str):
