@@ -89,13 +89,44 @@ def _get_management_token() -> str:
     return token
 
 
+def _get_github_token_from_identity(user_sub: str) -> str | None:
+    """
+    Fetch the GitHub access token from the user's linked identity
+    via the Auth0 Management API.
+
+    When a user logs in with GitHub social connection, Auth0 stores
+    the GitHub access token in the user's identity array. This method
+    retrieves it without requiring Token Vault setup.
+    """
+    mgmt_token = _get_management_token()
+    url = f"{_MGMT_API_BASE}/users/{user_sub}"
+    headers = {"Authorization": f"Bearer {mgmt_token}"}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        logger.error("Failed to fetch user profile from Auth0: %s", exc)
+        return None
+
+    user_data = resp.json()
+    identities = user_data.get("identities", [])
+
+    for identity in identities:
+        if identity.get("provider") == "github" and identity.get("access_token"):
+            return identity["access_token"]
+
+    return None
+
+
 def request_scoped_token(user_sub: str, scope: str) -> dict:
     """
-    Request a GitHub access token for the given user using Auth0 Token Vault.
+    Request a GitHub access token for the given user.
 
-    This uses the Tokensproxy API to retrieve a scoped, short-lived token.
-    If the action requires human approval or step-up authentication, the
-    API returns 202 (Accepted) with an approval_reference.
+    Strategy:
+      1. Try Auth0 Token Vault (tokensproxy) first.
+      2. If Token Vault returns 404 (not configured), fall back to
+         extracting the GitHub token from the user's linked identity.
 
     Parameters
     ----------
@@ -109,81 +140,77 @@ def request_scoped_token(user_sub: str, scope: str) -> dict:
     dict
         One of:
         - ``{"status": "approved", "access_token": "..."}``
-        - ``{"status": "approval_required", "approval_reference": "...",
-             "message": "..."}``
+        - ``{"status": "approval_required", ...}``
 
     Raises
     ------
     HTTPException
-        403 if the user hasn't authorized the connection or the scope.
-        503 on Auth0 communication failure.
+        403 / 404 / 503 on various failures.
     """
     mgmt_token = _get_management_token()
-    
-    # Token Vault Connection Proxy endpoint
+
+    # ── Strategy 1: Try Token Vault first ─────────────────────
     connection_name = settings.auth0_token_vault_connection
     url = f"https://{settings.auth0_domain}/api/v2/tokensproxy/connections/{connection_name}/token"
-    
-    params = {
-        "user_id": user_sub,
-        "scope": scope
-    }
-    
+
+    params = {"user_id": user_sub, "scope": scope}
     headers = {
         "Authorization": f"Bearer {mgmt_token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
 
     try:
-        logger.info("Requesting scoped token for %s from Token Vault (scope: %s)", user_sub, scope)
+        logger.info("Requesting scoped token for %s (scope: %s)", user_sub, scope)
         resp = requests.get(url, headers=headers, params=params, timeout=15)
-        
-        # ── 1. Success — Token received directly ────────────────
+
         if resp.status_code == 200:
             data = resp.json()
-            return {
-                "status": "approved",
-                "access_token": data["access_token"]
-            }
+            return {"status": "approved", "access_token": data["access_token"]}
 
-        # ── 2. Approval Required — Step-up or consent needed ──
         if resp.status_code == 202:
             data = resp.json()
             return {
                 "status": "approval_required",
                 "approval_reference": data.get("approval_reference"),
-                "message": data.get("message", "Human approval or step-up authentication is required.")
+                "message": data.get("message", "Human approval or step-up authentication is required."),
             }
 
-        # ── 3. Forbidden — Missing delegation or restricted scope ─
         if resp.status_code == 403:
-            logger.warning("Auth0 Token Vault returned 403 Forbidden for user %s", user_sub)
+            logger.warning("Token Vault 403 for user %s", user_sub)
             raise HTTPException(
                 status_code=403,
-                detail=(
-                    f"Action forbidden: The user has not authorized the '{scope}' scope, "
-                    "or the application is not authorized to act on behalf of the user."
-                )
+                detail=f"Action forbidden: user has not authorized the '{scope}' scope.",
             )
 
-        # ── 4. Not Found — Connection or User doesn't exist ─────
+        # ── Token Vault not configured — fall back to identity ──
         if resp.status_code == 404:
-            logger.warning("Auth0 Token Vault or user not found: %s", user_sub)
+            logger.info("Token Vault 404 — falling back to user identity for %s", user_sub)
+            gh_token = _get_github_token_from_identity(user_sub)
+            if gh_token:
+                return {"status": "approved", "access_token": gh_token}
+
             raise HTTPException(
                 status_code=404,
-                detail=f"Token Vault connection '{connection_name}' or user not found."
+                detail=(
+                    "GitHub token not found. Please log in with GitHub "
+                    "to link your account."
+                ),
             )
 
-        # ── 5. Unexpected errors ────────────────────────────────
         logger.error("Unexpected Token Vault error %d: %s", resp.status_code, resp.text)
         raise HTTPException(
             status_code=503,
-            detail=f"Auth0 Token Vault returned an unexpected status code: {resp.status_code}"
+            detail=f"Auth0 Token Vault returned unexpected status: {resp.status_code}",
         )
 
     except requests.RequestException as exc:
-        logger.error("Auth0 Token Vault communication failure: %s", exc)
+        # Network error — try identity fallback before giving up
+        logger.warning("Token Vault network error, trying identity fallback: %s", exc)
+        gh_token = _get_github_token_from_identity(user_sub)
+        if gh_token:
+            return {"status": "approved", "access_token": gh_token}
+
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to communicate with Auth0 Token Vault: {exc}"
-        )
+            detail=f"Failed to retrieve GitHub token: {exc}",
+        ) from exc
